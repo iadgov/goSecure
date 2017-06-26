@@ -1,7 +1,6 @@
 import time
 from subprocess import CalledProcessError, check_output
-
-from pi_mgmt import turn_on_led_green, turn_off_led_green
+from pi_mgmt import turn_green_led
 
 
 def set_vpn_params(vpn_server, user_id, user_psk):
@@ -56,7 +55,7 @@ def start_vpn():
 
     if vpn_status() and add_route():
         time.sleep(3)
-        turn_on_led_green()
+        turn_green_led(on=True)
         return True
     else:
         return False
@@ -68,12 +67,12 @@ def stop_vpn():
     except CalledProcessError:
         return False
     else:
-        turn_off_led_green()
+        turn_green_led(on=False)
         return True
 
 
 def restart_vpn():
-    turn_off_led_green()
+    turn_green_led(on=False)
 
     try:
         check_output(["sudo", "ipsec", "restart"])
@@ -84,7 +83,7 @@ def restart_vpn():
 
     if vpn_status() and add_route():
         time.sleep(3)
-        turn_on_led_green()
+        turn_green_led(on=True)
         return True
     else:
         return False
