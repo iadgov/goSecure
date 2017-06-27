@@ -9,7 +9,7 @@ from subprocess import call, check_output
 def enable_ip_forward():
     print "goSecure_Client_Script - Enable IP Forwarding\n"
     call("sudo sh -c 'echo 1 > /proc/sys/net/ipv4/ip_forward'", shell=True)
-    
+
     with open("/etc/sysctl.conf") as fin:
         lines = fin.readlines()
 
@@ -18,16 +18,15 @@ def enable_ip_forward():
             lines[i] = "net.ipv4.ip_forward = 1\n"
 
     with open("/etc/sysctl.conf", "w") as fout:
-        for line in lines:
-            fout.write(line)
-    
+        fout.writelines(lines)
+
     call(["sudo", "sysctl", "-p"])
 
 
 def configure_firewall():
     print "goSecure_Client_Script - Configure Firewall\n"
     call("sudo mkdir /etc/iptables/", shell=True)
-    
+
     iptables_rules = textwrap.dedent("""\
         *mangle
         :PREROUTING ACCEPT [0:0]
@@ -58,51 +57,51 @@ def configure_firewall():
         :OUTPUT ACCEPT [0:0]
         :POSTROUTING ACCEPT [0:0]
         -A POSTROUTING -o ipsec0 -j MASQUERADE
-        COMMIT\n""")
-    
-    iptables_file = open("/etc/iptables/rules.v4", "w")
-    iptables_file.write(iptables_rules)
-    iptables_file.close()
-    
+        COMMIT
+        """)
+
+    with open("/etc/iptables/rules.v4", "w") as iptables_file:
+        iptables_file.write(iptables_rules)
+
     iptables_start_on_boot_script = textwrap.dedent("""\
         #!/bin/sh
-        sudo /sbin/iptables-restore < /etc/iptables/rules.v4\n""")
-    
-    iptables_start_on_boot_file = open("/etc/network/if-pre-up.d/firewall", "w")
-    iptables_start_on_boot_file.write(iptables_start_on_boot_script)
-    iptables_start_on_boot_file.close()
-    
+        sudo /sbin/iptables-restore < /etc/iptables/rules.v4
+        """)
+
+    with open("/etc/network/if-pre-up.d/firewall", "w") as iptables_start_on_boot_file:
+        iptables_start_on_boot_file.write(iptables_start_on_boot_script)
+
     call("sudo chmod 550 /etc/network/if-pre-up.d/firewall", shell=True)
 
 
 def enable_hardware_random():
     print "goSecure_Client_Script - Enable Hardware Random\n"
-    pi_hardware_version = check_output(["cat", "/proc/cpuinfo"]).split("\n")[-4]
-    
+    pi_hardware_version = (
+        check_output(["cat", "/proc/cpuinfo"]).split("\n")[-4])
+
     # if Pi 2
     if "BCM2708" in pi_hardware_version:
         call("sudo modprobe bcm2708-rng", shell=True)
-        
+
         # call("sudo sh -c 'echo bcm2708-rng >> /etc/modules'")
         with open("/etc/modules", "r+") as f:
-            for line in f:
-                if "bcm2708-rng" in line:
-                    break
-            else: # not found, we are at the eof
-                call("sudo sh -c 'echo bcm2708-rng >> /etc/modules'")
-        
+            content = f.read()
+
+        if "bcm2708-rng" not in content:
+            call("sudo sh -c 'echo bcm2708-rng >> /etc/modules'")
+
     # else if Pi 3
     elif "BCM2709" in pi_hardware_version:
         call("sudo modprobe bcm2835-rng", shell=True)
-        
+
         # call("sudo sh -c 'echo bcm2835-rng >> /etc/modules'")
         with open("/etc/modules", "r") as f:
-            for line in f:
-                if "bcm2835-rng" in line:
-                    break
-            else: # not found, we are at the eof
-                call("sudo sh -c 'echo bcm2835-rng >> /etc/modules'", shell=True)
-    
+            content = f.read()
+
+        if "bcm2835-rng" not in content:
+            call("sudo sh -c 'echo bcm2835-rng >> /etc/modules'", shell=True)
+
+
 def install_strongswan():
     print "goSecure_Client_Script - Install strongSwan\n"
     install_strongswan_commands = textwrap.dedent("""\
@@ -113,13 +112,14 @@ def install_strongswan():
         cd /tmp/strongswan-5.5.0/ && ./configure --prefix=/usr --sysconfdir=/etc --enable-gcm --with-random-device=/dev/hwrng --enable-kernel-libipsec --enable-openssl --with-fips-mode=2 --disable-vici --disable-des --disable-ikev2 --disable-gmp
         make -C /tmp/strongswan-5.5.0/
         sudo make -C /tmp/strongswan-5.5.0/ install""")
-    
+
     for command in install_strongswan_commands.splitlines():
         call(command, shell=True)
-        
+
+
 def configure_strongswan():
     print "goSecure_Client_Script - Configure strongSwan\n"
-    
+
     strongswan_conf = textwrap.dedent("""\
         charon {
                 interfaces_use = wlan0 # the external/WAN interface
@@ -131,11 +131,10 @@ def configure_strongswan():
         }
         
         include strongswan.d/*.conf""")
-    
-    strongswan_conf_file = open("/etc/strongswan.conf", "w")
-    strongswan_conf_file.write(strongswan_conf)
-    strongswan_conf_file.close()
-    
+
+    with open("/etc/strongswan.conf", "w") as strongswan_conf_file:
+        strongswan_conf_file.write(strongswan_conf)
+
     ipsec_conf = textwrap.dedent("""\
         config setup
         
@@ -160,18 +159,14 @@ def configure_strongswan():
                 esp=aes256gcm128!
                 aggressive=yes # this is required to support multiple road warrior clients that use just a pre-shared key.""")
 
-    ipsec_conf_file = open("/etc/ipsec.conf", "w")
-    ipsec_conf_file.write(ipsec_conf)
-    ipsec_conf_file.close()
-    
-    
+    with open("/etc/ipsec.conf", "w") as ipsec_conf_file:
+        ipsec_conf_file.write(ipsec_conf)
+
     ipsec_secrets = "<unique_id_of_client> : PSK <password_for_client>"
-    
-    ipsec_secrets_file = open("/etc/ipsec.secrets", "w")
-    ipsec_secrets_file.write(ipsec_secrets)
-    ipsec_secrets_file.close()
-    
-    
+
+    with open("/etc/ipsec.secrets", "w") as ipsec_secrets_file:
+        ipsec_secrets_file.write(ipsec_secrets)
+
     with open("/etc/strongswan.d/charon/openssl.conf") as fin:
         lines = fin.readlines()
 
@@ -180,30 +175,28 @@ def configure_strongswan():
             lines[i] = "    fips_mode = 0\n"
 
     with open("/etc/strongswan.d/charon/openssl.conf", "w") as fout:
-        for line in lines:
-            fout.write(line)
-    
-    
+        fout.writelines(lines)
+
     call(["sudo", "service", "networking", "restart"])
     time.sleep(30)
-    
+
+
 def start_strongswan():
     print "goSecure_Client_Script - Start strongSwan\n"
-    
+
     # start strongSwan
     call("sudo ipsec start", shell=True)
-    
+
     # start strongSwan on boot
     with open("/etc/network/if-pre-up.d/firewall", "r") as f:
-        for line in f:
-            if "sudo ipsec start" in line:
-                break
-        else: # not found, we are at the eof
-            call("sudo sh -c 'echo \"sudo ipsec start\" >> /etc/network/if-pre-up.d/firewall'", shell=True)
-    
+        content = f.read()
+
+    if "sudo ipsec start" not in content:
+        call("sudo sh -c 'echo \"sudo ipsec start\" >> /etc/network/if-pre-up.d/firewall'", shell=True)
+
     # add temporary route for local eth0 interface
     call("sudo ip route add table 220 192.168.50.0/24 dev eth0", shell=True)
-    
+
     route_on_boot_commands = textwrap.dedent("""\
         sudo sed -i '$ d' /etc/rc.local
         sudo sh -c \"echo 'ip route add table 220 192.168.50.0/24 dev eth0' >> /etc/rc.local\"
@@ -211,14 +204,13 @@ def start_strongswan():
 
     # add route on boot
     with open("/etc/rc.local", "r+") as f:
-        for line in f:
-            if "ip route add table 220 192.168.50.0/24 dev eth0" in line:
-                break
-                
-        else: # not found, we are at the eof
-            for command in route_on_boot_commands.splitlines():
-                call(command, shell=True)
-        
+        content = f.read()
+
+    if "ip route add table 220 192.168.50.0/24 dev eth0" not in content:
+        for command in route_on_boot_commands.splitlines():
+            call(command, shell=True)
+
+
 def setup_dhcp_and_dns_server():
     print "goSecure_Client_Script - Setup DHCP and DNS Server\n"
     call("sudo apt-get update", shell=True)
@@ -261,23 +253,22 @@ def setup_dhcp_and_dns_server():
         log-dhcp
         # debugging dns
         # log-queries""")
-    
-    dhcp_and_dns_conf_file = open("/etc/dnsmasq.conf", "w")
-    dhcp_and_dns_conf_file.write(dhcp_and_dns_conf)
-    dhcp_and_dns_conf_file.close()
-    
+
+    with open("/etc/dnsmasq.conf", "w") as dhcp_and_dns_conf_file:
+        dhcp_and_dns_conf_file.write(dhcp_and_dns_conf)
+
     # call("sudo sh -c 'echo \"192.168.50.1 setup\" >> /etc/hosts'", shell=True)
     # add domain name to local dns lookup file
     with open("/etc/hosts", "r+") as f:
-        for line in f:
-            if "192.168.50.1 setup" in line:
-                break
-        else: # not found, we are at the eof
-            call("sudo sh -c 'echo \"192.168.50.1 setup\" >> /etc/hosts'", shell=True)
-    
+        content = f.read()
+
+    if "192.168.50.1 setup" not in content:
+        call("sudo sh -c 'echo \"192.168.50.1 setup\" >> /etc/hosts'", shell=True)
+
     call(["sudo", "service", "dnsmasq", "start"])
     call(["sudo", "update-rc.d", "dnsmasq", "enable"])
-    
+
+
 def setup_user_interface():
     print "goSecure_Client_Script - Setup User Interface\n"
     setup_user_interface_commands = textwrap.dedent("""\
@@ -294,7 +285,7 @@ def setup_user_interface():
 
     for command in setup_user_interface_commands.splitlines():
         call(command, shell=True)
-        
+
     gosecure_service_conf = textwrap.dedent("""\
         [Unit]
         Description=goSecure Web GUI Service
@@ -307,10 +298,9 @@ def setup_user_interface():
         [Install]
         WantedBy=multi-user.target""")
 
-    gosecure_service_file = open("/lib/systemd/system/gosecure.service", "w")
-    gosecure_service_file.write(gosecure_service_conf)
-    gosecure_service_file.close()
-    
+    with open("/lib/systemd/system/gosecure.service", "w") as gosecure_service_file:
+        gosecure_service_file.write(gosecure_service_conf)
+
     setup_gosecure_service_commands = textwrap.dedent("""\
         sudo chmod 644 /lib/systemd/system/gosecure.service
         sudo systemctl daemon-reload
@@ -319,14 +309,13 @@ def setup_user_interface():
 
     for command in setup_gosecure_service_commands.splitlines():
         call(command, shell=True)
-        
-        
+
+
 def main():
-    cmdargs = str(sys.argv)
     if len(sys.argv) != 1:
         print 'Syntax is: sudo python gosecure_client_install.py\nExample: sudo python gosecure_client_install.py\n'
         exit()
-    
+
     enable_ip_forward()
     configure_firewall()
     enable_hardware_random()
@@ -335,9 +324,10 @@ def main():
     setup_user_interface()
     configure_strongswan()
     start_strongswan()
-    
+
     call("echo 'Rebooting now... please wait 30 seconds and navigate to https://setup.gosecure'", shell=True)
     call("sudo reboot", shell=True)
-    
+
+
 if __name__ == "__main__":
     main()
