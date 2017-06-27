@@ -9,6 +9,7 @@ def update_os():
     print "goSecure_Server_Script - Update OS\n"
     call("sudo yum update -y", shell=True)
 
+
 def enable_ip_forward():
     print "goSecure_Server_Script - Enable IP Forward\n"
     with open("/etc/sysctl.conf") as fin:
@@ -19,9 +20,8 @@ def enable_ip_forward():
             lines[i] = "net.ipv4.ip_forward = 1\n"
 
     with open("/etc/sysctl.conf", "w") as fout:
-        for line in lines:
-            fout.write(line)
-    
+        fout.writelines(lines)
+
     call(["sudo", "sysctl", "-p"])
 
 
@@ -56,14 +56,14 @@ def configure_firewall():
         :OUTPUT ACCEPT [0:0]
         -A POSTROUTING -o eth0 -j MASQUERADE
         -A POSTROUTING -o eth1 -j MASQUERADE
-        COMMIT\n""")
-    
-    iptables_file = open("/etc/sysconfig/iptables", "w")
-    iptables_file.write(iptables_rules)
-    iptables_file.close()
+        COMMIT
+        """)
+
+    with open("/etc/sysconfig/iptables", "w") as iptables_file:
+        iptables_file.write(iptables_rules)
     call(["sudo", "service", "iptables", "restart"])
 
-    
+
 def install_strongswan():
     print "goSecure_Server_Script - Install strongSwan\n"
     install_strongswan_commands = textwrap.dedent("""\
@@ -78,10 +78,11 @@ def install_strongswan():
 
     for command in install_strongswan_commands.splitlines():
         call(command, shell=True)
-        
+
+
 def configure_strongswan(client_id, client_psk):
     print "goSecure_Server_Script - Configure strongSwan\n"
-    
+
     strongswan_conf = textwrap.dedent("""\
         charon {
                 interfaces_use = eth0
@@ -94,10 +95,9 @@ def configure_strongswan(client_id, client_psk):
         
         include strongswan.d/*.conf""")
 
-    strongswan_conf_file = open("/etc/strongswan.conf", "w")
-    strongswan_conf_file.write(strongswan_conf)
-    strongswan_conf_file.close()
-    
+    with open("/etc/strongswan.conf", "w") as strongswan_conf_file:
+        strongswan_conf_file.write(strongswan_conf)
+
     ipsec_conf = textwrap.dedent("""\
         config setup
         
@@ -125,45 +125,43 @@ def configure_strongswan(client_id, client_psk):
         
         # To add additional clients:
         # conn rw-client2 # increment the last number by 1 for each additional client
-        #        rightid=<unique_id_of_client> # set a unique id for each client""".format(client_id))
+        #        rightid=<unique_id_of_client> # set a unique id for each client
+        """.format(client_id))
 
-    ipsec_conf_file = open("/etc/ipsec.conf", "w")
-    ipsec_conf_file.write(ipsec_conf)
-    ipsec_conf_file.close()
-
+    with open("/etc/ipsec.conf", "w") as ipsec_conf_file:
+        ipsec_conf_file.write(ipsec_conf)
 
     ipsec_secrets = "{0} : PSK {1}".format(client_id, client_psk)
 
-    ipsec_secrets_file = open("/etc/ipsec.secrets", "w")
-    ipsec_secrets_file.write(ipsec_secrets)
-    ipsec_secrets_file.close()
-
+    with open("/etc/ipsec.secrets", "w") as ipsec_secrets_file:
+        ipsec_secrets_file.write(ipsec_secrets)
 
     call(["sudo", "service", "network", "restart"])
-    
+
+
 def start_strongswan():
     print "goSecure_Server_Script - Start strongSwan\n"
     call(["sudo", "ipsec", "start"])
     call('sudo echo "ipsec start" >> /etc/rc.d/rc.local', shell=True)
-    
-def main():
-    cmdargs = str(sys.argv)
 
-    if len(sys.argv) != 3:
+
+def main():
+    try:
+        _, client_id, client_psk = sys.argv
+    except ValueError:
         print textwrap.dedent("""\
             Syntax is: sudo python gosecure_server_install.py <server_id> <client1_id> "<client1_psk>"
-            Example: sudo python gosecure_server_install.py vpn.ix.mil client1.ix.mil "mysupersecretpsk"\n""")
+            Example: sudo python gosecure_server_install.py vpn.ix.mil client1.ix.mil "mysupersecretpsk"
+            """)
         exit()
-    
-    client_id = str(sys.argv[1])
-    client_psk = str(sys.argv[2])
-    
-    update_os()
-    enable_ip_forward()
-    configure_firewall()
-    install_strongswan()
-    configure_strongswan(client_id, client_psk)
-    start_strongswan()
-    
+    else:
+        update_os()
+        enable_ip_forward()
+        configure_firewall()
+        install_strongswan()
+        configure_strongswan(client_id, client_psk)
+        start_strongswan()
+
+
 if __name__ == "__main__":
     main()
