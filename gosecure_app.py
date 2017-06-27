@@ -11,8 +11,8 @@ from flask import (
     Flask, render_template, request, Response, flash, redirect, url_for)
 
 from forms import (
-    loginForm, initialSetupForm, userForm, wifiForm, vpnPskForm,
-    resetToDefaultForm, statusForm)
+    LoginForm, InitialSetupForm, UserForm, WifiForm, VpnPskForm,
+    ResetToDefaultForm, StatusForm)
 from scripts.pi_mgmt import (
     pi_reboot, pi_shutdown, start_ssh_service, update_client)
 from scripts.rpi_network_conn import add_wifi, internet_status, reset_wifi
@@ -108,8 +108,8 @@ def user_validate_credentials(username, password):
     else:
         stored_password = users[username]['password']
         stored_salt = users[username]['salt']
-        userPasswordHash = hashlib.sha256(str(stored_salt) + password).hexdigest()
-        return stored_password == userPasswordHash
+        user_password_hash = hashlib.sha256(str(stored_salt) + password).hexdigest()
+        return stored_password == user_password_hash
 
 
 # return True is password is changed successfully
@@ -120,11 +120,11 @@ def user_change_credentials(username, password, new_password):
     else:
         # verify current password
         if user_validate_credentials(username, password):
-            #change password
-            userPasswordHashSalt = os.urandom(16).encode("base64")
-            userPasswordHash = hashlib.sha256(str(userPasswordHashSalt) + new_password).hexdigest()
-            users[username]["salt"] = userPasswordHashSalt
-            users[username]["password"] = userPasswordHash
+            # change password
+            user_password_hash_salt = os.urandom(16).encode("base64")
+            user_password_hash = hashlib.sha256(str(user_password_hash_salt) + new_password).hexdigest()
+            users[username]["salt"] = user_password_hash_salt
+            users[username]["password"] = user_password_hash
             with open("/home/pi/goSecure_Web_GUI/users_db.p", "wb") as fout:
                 pickle.dump(users, fout)
             return True
@@ -149,7 +149,7 @@ def page_not_found(e):
 # Login Page
 @app.route("/", methods=["GET", "POST"])
 def login():
-    form = loginForm()
+    form = LoginForm()
 
     if request.method == "GET":
         return render_template("login.html", form=form) 
@@ -203,7 +203,7 @@ def logout():
 @app.route("/status", methods=["GET", "POST"])
 @flask_login.login_required
 def status():
-    form = statusForm()
+    form = StatusForm()
     
     if request.method == "GET":
         # check to see if network and vpn are active, red=not active, green=active
@@ -216,7 +216,7 @@ def status():
 @app.route("/user", methods=["GET", "POST"])
 @flask_login.login_required
 def user():
-    form = userForm()
+    form = UserForm()
     
     if request.method == "GET":
         form.username.data = flask_login.current_user.id
@@ -243,7 +243,7 @@ def user():
 @app.route("/initial_setup", methods=["GET", "POST"])
 @flask_login.login_required
 def initial_setup():
-    form = initialSetupForm()
+    form = InitialSetupForm()
 
     if request.method == "GET":
         return render_template("initial_setup.html", form=form) 
@@ -276,7 +276,7 @@ def initial_setup():
 @app.route("/wifi", methods=["GET", "POST"])
 @flask_login.login_required
 def wifi():
-    form = wifiForm()
+    form = WifiForm()
 
     if request.method == "GET":
         return render_template("wifi.html", form=form)
@@ -306,7 +306,7 @@ def wifi():
 @app.route("/vpn_psk", methods=["GET", "POST"])
 @flask_login.login_required
 def vpn_psk():
-    form = vpnPskForm()
+    form = VpnPskForm()
 
     if request.method == "GET":
         return render_template("vpn_psk.html", form=form)
@@ -334,7 +334,7 @@ def vpn_psk():
 @app.route("/reset_to_default", methods=["GET", "POST"])
 @flask_login.login_required
 def reset_to_default():
-    form = resetToDefaultForm()
+    form = ResetToDefaultForm()
 
     if request.method == "GET":
         form.username.data = flask_login.current_user.id
@@ -384,7 +384,7 @@ def execute_action():
         update_client()
         flash("Client will reboot... please reload this page in 1 minute.")
     else:
-        form = initialSetupForm()
+        form = InitialSetupForm()
         flash("Error! Invalid Action!", "error")
         
     return redirect(url_for("status"))
@@ -396,7 +396,7 @@ def execute_action():
 @requires_basic_auth
 def api_vpn_credentials():
     if request.method == "POST":
-        form = initialSetupForm()
+        form = InitialSetupForm()
         form.vpn_server.data = request.json["vpn_server"]
         form.user_id.data = request.json["user_id"]
         form.user_psk.data = request.json["user_psk"]
